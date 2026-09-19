@@ -229,6 +229,7 @@ export class ToolRegistry {
   private toolToModule = new Map<string, ToolModule>();
   private allToolDefs: Tool[] = [];
   private profile: ToolProfile = readToolProfile();
+  private allowlist: Set<string> | undefined = readToolAllowlist();
   private generation: 'v3' | 'v2';
 
   constructor(ghlClient: GHLApiClient) {
@@ -493,6 +494,8 @@ export class ToolRegistry {
   private isToolVisible(name: string): boolean {
     const tool = this.allToolDefs.find((item) => item.name === name);
     if (!tool) return false;
+    // GHL_TOOL_ALLOWLIST is a hard filter on top of the profile: a tool outside it is neither listed nor callable.
+    if (this.allowlist && !this.allowlist.has(name)) return false;
     const category = ((tool as any)._meta?.labels?.category || '').toString();
     const source = ((tool as any)._meta?.labels?.source || '').toString();
     const isCurated = category === 'agent-workspace' || source === 'curated-agent-workspace';
@@ -530,6 +533,16 @@ export class ToolRegistry {
 }
 
 // All tool registration is handled via the ToolRegistry class above.
+
+/**
+ * GHL_TOOL_ALLOWLIST: comma-separated tool names. Unset or blank exposes every tool the profile allows.
+ * Names are matched exactly, so a typo hides that tool rather than exposing a different one.
+ */
+function readToolAllowlist(): Set<string> | undefined {
+  const raw = (process.env.GHL_TOOL_ALLOWLIST || '').trim();
+  if (!raw) return undefined;
+  return new Set(raw.split(',').map(name => name.trim()).filter(Boolean));
+}
 
 function readToolProfile(): ToolProfile {
   const value = (process.env.GHL_TOOL_PROFILE || 'full').toLowerCase();
